@@ -244,6 +244,39 @@ CREATE TABLE calendar_bookings (
   updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
 
+CREATE TABLE call_handoff_tokens (
+  token            TEXT PRIMARY KEY,
+  call_session_id  TEXT NOT NULL,
+  role             TEXT NOT NULL CHECK (role IN ('customer','staff')),
+  expires_at       TEXT NOT NULL,
+  consumed_at      TEXT,
+  FOREIGN KEY (call_session_id) REFERENCES call_sessions(id)
+);
+
+CREATE TABLE call_sessions (
+  id                  TEXT PRIMARY KEY,
+  booking_id          TEXT NOT NULL UNIQUE,
+  line_account_id     TEXT NOT NULL,
+  room_name           TEXT NOT NULL UNIQUE,              -- "call-<booking_id>"
+  status              TEXT NOT NULL DEFAULT 'scheduled'
+                      CHECK (status IN ('scheduled','in_progress','ended','no_show','cancelled')),
+  open_from           TEXT NOT NULL,                     -- UTC ISO8601: starts_at - 10min
+  close_at            TEXT NOT NULL,                     -- UTC ISO8601: ends_at + 15min
+  notify_at           TEXT NOT NULL,                     -- UTC ISO8601: starts_at - 10min
+  notified_at         TEXT,
+  customer_joined_at  TEXT,
+  staff_joined_at     TEXT,
+  started_at          TEXT,                              -- 双方が揃った時刻
+  ended_at            TEXT,
+  billable_seconds    INTEGER,
+  recording_url       TEXT,
+  last_error          TEXT,
+  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  FOREIGN KEY (booking_id) REFERENCES bookings(id),
+  FOREIGN KEY (line_account_id) REFERENCES line_accounts(id)
+);
+
 CREATE TABLE chats (
   id            TEXT PRIMARY KEY,
   friend_id     TEXT NOT NULL REFERENCES friends (id) ON DELETE CASCADE,
@@ -1194,6 +1227,12 @@ CREATE INDEX idx_broadcasts_status ON broadcasts (status);
 CREATE INDEX idx_calendar_bookings_friend ON calendar_bookings (friend_id);
 
 CREATE INDEX idx_calendar_bookings_start ON calendar_bookings (start_at);
+
+CREATE INDEX idx_call_handoff_expires ON call_handoff_tokens (expires_at);
+
+CREATE INDEX idx_call_sessions_close ON call_sessions (status, close_at);
+
+CREATE INDEX idx_call_sessions_notify ON call_sessions (status, notified_at, notify_at);
 
 CREATE UNIQUE INDEX idx_chats_friend_unique ON chats (friend_id);
 

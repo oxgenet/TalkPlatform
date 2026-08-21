@@ -7,7 +7,11 @@ import './index.css';
 
 (async () => {
   try {
-    await initLiff();
+    // TalkPlatform: /call-room は外部ブラウザで開く通話室。ワンタイムトークンで
+    // 認証するため LIFF 初期化 (= LINE ログインへのリダイレクト) をスキップする。
+    if (!window.location.pathname.startsWith('/call-room')) {
+      await initLiff();
+    }
     createRoot(document.getElementById('root')!).render(
       <StrictMode>
         <BrowserRouter>

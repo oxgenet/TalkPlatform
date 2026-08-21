@@ -76,6 +76,9 @@ import { autoReplies } from './routes/auto-replies.js';
 import { adminAuth } from './routes/admin-auth.js';
 import { resolveCorsOrigin } from './middleware/admin-auth-config.js';
 import booking from './routes/booking.js';
+import calls, { livekitConfig } from './routes/calls.js';
+import { expireCallSessions, processCallNotifications } from './services/call-session.js';
+import { sendCallLinkNotification } from './services/call-notifier.js';
 import events from './routes/events.js';
 import { trafficPools } from './routes/traffic-pools.js';
 import { meetCallback } from './routes/meet-callback.js';
@@ -149,6 +152,10 @@ export type Env = {
     // the Worker keeps a refresh token and never needs a service-account key.
     GOOGLE_OAUTH_CLIENT_ID?: string;
     GOOGLE_OAUTH_CLIENT_SECRET?: string;
+    // TalkPlatform: LiveKit 音声通話。URL は [vars]、key/secret は wrangler secret。
+    LIVEKIT_URL?: string;
+    LIVEKIT_API_KEY?: string;
+    LIVEKIT_API_SECRET?: string;
   };
   Variables: {
     staff: { id: string; name: string; role: 'owner' | 'admin' | 'staff' };
@@ -234,6 +241,7 @@ app.route('/', autoReplies);
 app.route('/', adminAuth);
 app.route('/', trafficPools);
 app.route('/', booking);
+app.route('/', calls); // TalkPlatform
 app.route('/', events);
 app.route('/', accountSettings);
 app.route('/', meetCallback);
@@ -999,6 +1007,23 @@ async function scheduled(
     }
   } catch (e) {
     console.error('event-booking-reminders error:', e);
+  }
+
+  // TalkPlatform: 通話リンク Push (開始10分前) と、未成立セッションの no_show 確定。
+  try {
+    const liffUrlBase = env.LIFF_PUBLIC_URL || env.LIFF_URL;
+    const result = await processCallNotifications(env.DB, {
+      now: new Date(),
+      liffUrlBase,
+      sender: sendCallLinkNotification,
+    });
+    if (result.sent + result.failed > 0) {
+      console.log(`[call-notifier] sent=${result.sent} failed=${result.failed}`);
+    }
+    const expired = await expireCallSessions(env.DB, { now: new Date(), livekit: livekitConfig(env) ?? undefined });
+    if (expired.noShow > 0) console.log(`[call-expirer] no_show=${expired.noShow}`);
+  } catch (e) {
+    console.error('call-sessions cron error:', e);
   }
 
   // 外部Google Calendarで確定したMeet個別相談。前日・1時間前のLINE通知を

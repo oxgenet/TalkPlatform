@@ -49,6 +49,8 @@ WORKER_PUBLIC_URL = "https://line-harness.workers.dev"
 ADMIN_PUBLIC_URL = "https://line-harness-admin.pages.dev"
 LIFF_PUBLIC_URL = "https://line-harness-liff.pages.dev"
 CF_ACCOUNT_ID = "YOUR_DEV_ACCOUNT_ID"
+# TalkPlatform: LiveKit (音声通話)。API key/secret は `wrangler secret put LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`
+LIVEKIT_URL = "wss://YOUR-PROJECT.livekit.cloud"
 
 # ═══════════════════════════════════════════════════════════════
 # 本番環境

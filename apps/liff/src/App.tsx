@@ -7,6 +7,8 @@ import EventDone from './pages/EventDone.js';
 import EventBookings from './pages/EventBookings.js';
 import Affiliate from './pages/Affiliate.js';
 import Webinar from './pages/Webinar.js';
+import Call from './pages/Call.js';
+import CallRoomPage from './pages/CallRoomPage.js';
 import { legacyQueryTarget } from './legacy-route.js';
 
 function LegacyEntryRedirect() {
@@ -19,6 +21,8 @@ export default function App() {
     <Routes>
       <Route path="/booking" element={<Booking />} />
       <Route path="/booking/history" element={<BookingHistory />} />
+      <Route path="/call/:bookingId" element={<Call />} />
+      <Route path="/call-room" element={<CallRoomPage />} />
       <Route path="/events/me" element={<EventBookings />} />
       <Route path="/events/:id/confirm" element={<EventConfirm />} />
       <Route path="/events/:id/done" element={<EventDone />} />

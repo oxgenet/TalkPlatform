@@ -1861,6 +1861,36 @@ export const bookingApi = {
 };
 
 // ============================================================
+// TalkPlatform: 音声通話 (LiveKit)
+// ============================================================
+
+export interface CallState {
+  booking_id: string;
+  booking_status: string;
+  starts_at: string;
+  ends_at: string;
+  menu_name: string;
+  staff_name: string;
+  customer_name: string | null;
+  call: {
+    status: 'scheduled' | 'in_progress' | 'ended' | 'no_show' | 'cancelled';
+    open_from: string;
+    close_at: string;
+    can_join: boolean;
+    started_at: string | null;
+    ended_at: string | null;
+    billable_seconds: number | null;
+  } | null;
+  now: string;
+}
+
+export const callApi = {
+  state: (bookingId: string) => fetchApi<CallState>(`/api/calls/${bookingId}`),
+  token: (bookingId: string) =>
+    fetchApi<{ token: string; url: string; room: string }>(`/api/calls/${bookingId}/token`, { method: 'POST' }),
+};
+
+// ============================================================
 // Event-booking admin API
 // ============================================================
 
