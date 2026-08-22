@@ -156,6 +156,7 @@ export type Env = {
     LIVEKIT_URL?: string;
     LIVEKIT_API_KEY?: string;
     LIVEKIT_API_SECRET?: string;
+    CALL_LAB_SECRET?: string; // Audio Lab 用 (開発環境のみ設定。16 文字以上)
   };
   Variables: {
     staff: { id: string; name: string; role: 'owner' | 'admin' | 'staff' };

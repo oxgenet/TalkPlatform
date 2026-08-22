@@ -32,7 +32,7 @@ import {
   type CallRole,
   type CallSessionRow,
 } from '../services/call-session.js';
-import { verifyWebhook, type LiveKitConfig } from '../services/livekit.js';
+import { createAccessToken, verifyWebhook, type LiveKitConfig } from '../services/livekit.js';
 
 const calls = new Hono<Env>();
 
@@ -226,6 +226,37 @@ calls.post('/api/public/calls/livekit-webhook', async (c) => {
       break;
   }
   return c.json({ ok: true });
+});
+
+// ---- Audio Lab 用トークン発行 (CALL_LAB_SECRET 設定時のみ有効) ------------------
+// 予約・LINE 認証なしで実機の音声検証をするための開発者向け口。room は "lab-" 接頭辞に
+// 強制し、本番の call-<booking_id> ルームには入れない。本番では secret を設定しない。
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+
+calls.post('/api/public/calls/lab-token', async (c) => {
+  const secret = c.env.CALL_LAB_SECRET;
+  if (!secret || secret.length < 16) return c.json({ error: 'not_found' }, 404);
+  const cfg = livekitConfig(c.env);
+  if (!cfg) return c.json({ error: 'livekit_not_configured' }, 503);
+  const auth = (c.req.header('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  if (!timingSafeEqual(auth, secret)) return c.json({ error: 'unauthorized' }, 401);
+  type LabBody = { room?: string; identity?: string; name?: string };
+  const body: LabBody = await c.req.json<LabBody>().catch(() => ({}) as LabBody);
+  const room = `lab-${String(body.room ?? '1').replace(/^lab-/, '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32) || '1'}`;
+  const identity = String(body.identity ?? `dev-${crypto.randomUUID().slice(0, 6)}`).replace(/[^a-zA-Z0-9_.:-]/g, '').slice(0, 64);
+  const token = await createAccessToken(cfg, {
+    identity,
+    name: body.name ?? identity,
+    ttlSeconds: 3600,
+    grant: { roomJoin: true, room, canPublish: true, canSubscribe: true, canPublishData: false },
+  });
+  return c.json({ token, url: cfg.url, room, identity });
 });
 
 export default calls;

@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@line/liff": "^2.24.0",
+    "@talkplatform/call-audio": "workspace:*",
     "hls.js": "^1.6.16",
-    "livekit-client": "^2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.0.0"

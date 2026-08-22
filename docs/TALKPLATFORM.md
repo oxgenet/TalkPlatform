@@ -76,6 +76,12 @@ LiveKit Webhook (participant_joined / room_finished)
 - 録音が必要なら LiveKit Egress (audio only) を有効化し、`egress_ended` Webhook で `recording_url` が入る。
 - `booking_reminders.kind` の CHECK 制約を触らず、通知状態は `call_sessions.notified_at` で管理 (上流追従を優先)。
 
+## 音声の単体検証 (Audio Lab)
+
+音声はデバイス / OS / ブラウザ依存の問題が多いため、予約・LINE から切り離して検証できる
+`apps/audio-lab` を用意しています。制御ロジックは `packages/call-audio` に切り出し、
+LIFF・管理画面・Lab の 3 者が同じ実装を共有します。手順は `apps/audio-lab/README.md`。
+
 ## テスト
 
 ```bash
