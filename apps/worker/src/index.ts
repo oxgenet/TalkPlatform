@@ -157,6 +157,13 @@ export type Env = {
     LIVEKIT_API_KEY?: string;
     LIVEKIT_API_SECRET?: string;
     CALL_LAB_SECRET?: string; // Audio Lab 用 (開発環境のみ設定。16 文字以上)
+    CALL_AGENT_SECRET?: string; // AI エージェント → Worker のイベント認証 (16 文字以上)
+    // 録音 (LiveKit Egress → S3 互換。セルフホストは MinIO)
+    RECORDING_S3_BUCKET?: string;
+    RECORDING_S3_ENDPOINT?: string;
+    RECORDING_S3_ACCESS_KEY?: string;
+    RECORDING_S3_SECRET?: string;
+    RECORDING_S3_REGION?: string;
   };
   Variables: {
     staff: { id: string; name: string; role: 'owner' | 'admin' | 'staff' };

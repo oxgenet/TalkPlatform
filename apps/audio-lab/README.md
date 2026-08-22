@@ -17,7 +17,7 @@ pnpm --filter audio-lab dev
 **A. ローカル CLI**（Worker 不要）
 
 ```bash
-LIVEKIT_URL=wss://xxx.livekit.cloud LIVEKIT_API_KEY=... LIVEKIT_API_SECRET=... \
+LIVEKIT_URL=wss://livekit.yourdomain.jp LIVEKIT_API_KEY=... LIVEKIT_API_SECRET=... \
   pnpm --filter audio-lab token --room lab-1 --identity phone-a
 ```
 

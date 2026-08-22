@@ -21,24 +21,50 @@ import {
   verifyCallerLineUserId,
 } from './booking.js';
 import {
+  appendTranscripts,
+  buildRoomMeta,
   consumeHandoffToken,
   createHandoffToken,
+  ensureRecording,
   getCallSessionByBooking,
   getCallSessionByRoom,
   isJoinWindowOpen,
   issueJoinToken,
+  listTranscripts,
   onParticipantJoined,
   onRoomFinished,
+  setCallMode,
+  setSummary,
+  type CallMode,
   type CallRole,
   type CallSessionRow,
+  type TranscriptIn,
 } from '../services/call-session.js';
-import { createAccessToken, verifyWebhook, type LiveKitConfig } from '../services/livekit.js';
+import { createAccessToken, verifyWebhook, type EgressS3, type LiveKitConfig } from '../services/livekit.js';
 
 const calls = new Hono<Env>();
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
 
 export function livekitConfig(env: Env['Bindings']): LiveKitConfig | null {
   if (!env.LIVEKIT_URL || !env.LIVEKIT_API_KEY || !env.LIVEKIT_API_SECRET) return null;
   return { url: env.LIVEKIT_URL, apiKey: env.LIVEKIT_API_KEY, apiSecret: env.LIVEKIT_API_SECRET };
+}
+
+export function recordingS3(env: Env['Bindings']): EgressS3 | null {
+  if (!env.RECORDING_S3_BUCKET || !env.RECORDING_S3_ENDPOINT || !env.RECORDING_S3_ACCESS_KEY || !env.RECORDING_S3_SECRET) return null;
+  return {
+    bucket: env.RECORDING_S3_BUCKET,
+    endpoint: env.RECORDING_S3_ENDPOINT,
+    accessKey: env.RECORDING_S3_ACCESS_KEY,
+    secret: env.RECORDING_S3_SECRET,
+    region: env.RECORDING_S3_REGION,
+  };
 }
 
 interface BookingCtx {
@@ -87,6 +113,11 @@ function publicState(b: BookingCtx, s: CallSessionRow | null, now: Date) {
           started_at: s.started_at,
           ended_at: s.ended_at,
           billable_seconds: s.billable_seconds,
+          mode: s.mode ?? 'ai',
+          handoff_reason: s.handoff_reason,
+          ai_summary: s.ai_summary,
+          agent_joined_at: s.agent_joined_at,
+          recording: Boolean(s.recording_egress_id),
         }
       : null,
     now: now.toISOString(),
@@ -133,6 +164,7 @@ calls.post('/api/liff/calls/:bookingId/token', async (c) => {
     cfg, s,
     { role: 'customer', id: r.booking.friend_id, displayName: r.booking.customer_name ?? 'お客様' },
     now,
+    buildRoomMeta(s, r.booking),
   );
   return c.json(join);
 });
@@ -166,7 +198,7 @@ calls.post('/api/public/calls/handoff/:token', async (c) => {
     h.role === 'customer'
       ? { role: 'customer' as CallRole, id: b.friend_id, displayName: b.customer_name ?? 'お客様' }
       : { role: 'staff' as CallRole, id: b.staff_id, displayName: b.staff_name };
-  const join = await issueJoinToken(cfg, s, who, now);
+  const join = await issueJoinToken(cfg, s, who, now, buildRoomMeta(s, b));
   return c.json({ ...join, state: publicState(b, s, now) });
 });
 
@@ -188,8 +220,74 @@ calls.post('/api/calls/:bookingId/token', async (c) => {
   const s = await getCallSessionByBooking(c.env.DB, b.id);
   if (!s) return c.json({ error: 'no_call_session' }, 404);
   if (!isJoinWindowOpen(s, now)) return c.json({ error: 'not_open', ...publicState(b, s, now) }, 409);
-  const join = await issueJoinToken(cfg, s, { role: 'staff', id: b.staff_id, displayName: b.staff_name }, now);
+  const join = await issueJoinToken(cfg, s, { role: 'staff', id: b.staff_id, displayName: b.staff_name }, now, buildRoomMeta(s, b));
   return c.json(join);
+});
+
+// ---- モード切替・文字起こし (管理画面) ------------------------------------------
+
+calls.post('/api/calls/:bookingId/mode', async (c) => {
+  const b = await loadBooking(c.env.DB, c.req.param('bookingId'));
+  if (!b) return c.json({ error: 'not_found' }, 404);
+  const s = await getCallSessionByBooking(c.env.DB, b.id);
+  if (!s) return c.json({ error: 'no_call_session' }, 404);
+  const body = await c.req.json<{ mode?: CallMode; reason?: string }>().catch(() => ({} as { mode?: CallMode; reason?: string }));
+  if (body.mode !== 'ai' && body.mode !== 'human' && body.mode !== 'human_requested') return c.json({ error: 'bad_mode' }, 400);
+  const r = await setCallMode(c.env.DB, livekitConfig(c.env), s, body.mode, { by: 'operator', reason: body.reason, meta: buildRoomMeta(s, b) });
+  if (!r.ok) return c.json({ error: r.error }, 409);
+  return c.json({ ok: true, mode: body.mode });
+});
+
+calls.get('/api/calls/:bookingId/transcript', async (c) => {
+  const b = await loadBooking(c.env.DB, c.req.param('bookingId'));
+  if (!b) return c.json({ error: 'not_found' }, 404);
+  const s = await getCallSessionByBooking(c.env.DB, b.id);
+  if (!s) return c.json({ items: [], summary: null, mode: 'ai' });
+  const after = Number(c.req.query('after') ?? '');
+  const items = await listTranscripts(c.env.DB, s.id, Number.isFinite(after) ? after : -Infinity);
+  return c.json({ items, summary: s.ai_summary, mode: s.mode ?? 'ai', handoff_reason: s.handoff_reason });
+});
+
+// ---- エージェント → Worker (CALL_AGENT_SECRET で認証) -----------------------------
+// エージェントは room 名 (call-<booking_id>) で自分のセッションを特定する。
+
+type AgentEvent =
+  | { type: 'transcript'; items: TranscriptIn[] }
+  | { type: 'handoff_request'; reason?: string; by?: 'agent' | 'customer' }
+  | { type: 'summary'; text: string }
+  | { type: 'resume_ai' };
+
+calls.post('/api/public/calls/agent-event', async (c) => {
+  const secret = c.env.CALL_AGENT_SECRET;
+  if (!secret || secret.length < 16) return c.json({ error: 'not_found' }, 404);
+  const auth = (c.req.header('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  if (!timingSafeEqual(auth, secret)) return c.json({ error: 'unauthorized' }, 401);
+  const body = await c.req.json<{ room: string; event: AgentEvent }>().catch(() => null);
+  if (!body?.room || !body.event) return c.json({ error: 'bad_request' }, 400);
+  const s = await getCallSessionByRoom(c.env.DB, body.room);
+  if (!s) return c.json({ error: 'unknown_room' }, 404);
+  const b = await loadBooking(c.env.DB, s.booking_id);
+  if (!b) return c.json({ error: 'not_found' }, 404);
+  const ev = body.event;
+  switch (ev.type) {
+    case 'transcript': {
+      const n = await appendTranscripts(c.env.DB, s, (ev.items ?? []).slice(0, 200));
+      return c.json({ ok: true, inserted: n });
+    }
+    case 'handoff_request': {
+      const r = await setCallMode(c.env.DB, livekitConfig(c.env), s, 'human_requested', { by: ev.by ?? 'agent', reason: ev.reason, meta: buildRoomMeta(s, b) });
+      return c.json({ ok: r.ok, error: r.error });
+    }
+    case 'resume_ai': {
+      const r = await setCallMode(c.env.DB, livekitConfig(c.env), s, 'ai', { by: 'agent', meta: buildRoomMeta(s, b) });
+      return c.json({ ok: r.ok, error: r.error });
+    }
+    case 'summary':
+      await setSummary(c.env.DB, s, String(ev.text ?? ''));
+      return c.json({ ok: true });
+    default:
+      return c.json({ error: 'unknown_event' }, 400);
+  }
 });
 
 // ---- LiveKit Webhook -------------------------------------------------------------
@@ -206,6 +304,15 @@ calls.post('/api/public/calls/livekit-webhook', async (c) => {
   if (!s) return c.json({ ok: true, ignored: 'unknown_room' });
   const at = body.createdAt ? new Date(body.createdAt * 1000) : new Date();
   switch (body.event) {
+    case 'room_started': {
+      const lk = cfg;
+      try {
+        await ensureRecording(c.env.DB, lk, recordingS3(c.env), s);
+      } catch (e) {
+        console.error('[calls] start recording failed:', e);
+      }
+      break;
+    }
     case 'participant_joined':
       if (body.participant?.identity) await onParticipantJoined(c.env.DB, s, body.participant.identity, at);
       break;
@@ -231,13 +338,6 @@ calls.post('/api/public/calls/livekit-webhook', async (c) => {
 // ---- Audio Lab 用トークン発行 (CALL_LAB_SECRET 設定時のみ有効) ------------------
 // 予約・LINE 認証なしで実機の音声検証をするための開発者向け口。room は "lab-" 接頭辞に
 // 強制し、本番の call-<booking_id> ルームには入れない。本番では secret を設定しない。
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let r = 0;
-  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return r === 0;
-}
 
 calls.post('/api/public/calls/lab-token', async (c) => {
   const secret = c.env.CALL_LAB_SECRET;

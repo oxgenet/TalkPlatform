@@ -7,7 +7,7 @@
 //     ─(cron close_at 経過・未接続)─▶ no_show (bookings.no_show)
 
 import type { LiveKitConfig } from './livekit.js';
-import { createAccessToken, createRoom, deleteRoom } from './livekit.js';
+import { createAccessToken, createRoom, deleteRoom, startAudioRecording, updateRoomMetadata, type EgressS3 } from './livekit.js';
 
 export const CALL_OPEN_BEFORE_MIN = 10;
 export const CALL_CLOSE_AFTER_MIN = 15;
@@ -30,6 +30,39 @@ export interface CallSessionRow {
   started_at: string | null;
   ended_at: string | null;
   billable_seconds: number | null;
+  mode: CallMode;
+  handoff_reason: string | null;
+  ai_summary: string | null;
+  recording_egress_id: string | null;
+  agent_joined_at: string | null;
+}
+
+export type CallMode = 'ai' | 'human_requested' | 'human';
+export const AGENT_IDENTITY = 'agent';
+
+// Room metadata (JSON)。エージェントはこれを見て参加可否・モードを決める。
+export interface RoomMeta {
+  talk: true;
+  call_session_id: string;
+  booking_id: string;
+  mode: CallMode;
+  customer_name: string | null;
+  staff_name: string;
+  menu_name: string;
+  language: 'ja';
+}
+
+export function buildRoomMeta(s: CallSessionRow, b: { customer_name: string | null; staff_name: string; menu_name: string }): RoomMeta {
+  return {
+    talk: true,
+    call_session_id: s.id,
+    booking_id: s.booking_id,
+    mode: s.mode ?? 'ai',
+    customer_name: b.customer_name,
+    staff_name: b.staff_name,
+    menu_name: b.menu_name,
+    language: 'ja',
+  };
 }
 
 export function customerIdentity(friendId: string): string {
@@ -38,7 +71,8 @@ export function customerIdentity(friendId: string): string {
 export function staffIdentity(staffId: string): string {
   return `staff:${staffId}`;
 }
-export function parseIdentity(identity: string): { role: CallRole; id: string } | null {
+export function parseIdentity(identity: string): { role: CallRole | 'agent'; id: string } | null {
+  if (identity === AGENT_IDENTITY) return { role: 'agent', id: AGENT_IDENTITY };
   const m = /^(customer|staff):(.+)$/.exec(identity);
   return m ? { role: m[1] as CallRole, id: m[2] } : null;
 }
@@ -101,8 +135,16 @@ export async function issueJoinToken(
   s: CallSessionRow,
   who: { role: CallRole; id: string; displayName: string },
   now: Date,
+  meta?: RoomMeta,
 ): Promise<{ token: string; url: string; room: string }> {
-  await createRoom(cfg, { name: s.room_name, maxParticipants: 2, emptyTimeoutSec: 120 });
+  // 3 人 = 顧客 + オペレーター + AI エージェント。metadata は初回作成時のみ反映される
+  // (既存 room には CreateRoom は no-op)。モード変更は updateRoomMetadata で行う。
+  await createRoom(cfg, {
+    name: s.room_name,
+    maxParticipants: 3,
+    emptyTimeoutSec: 120,
+    metadata: meta ? JSON.stringify(meta) : undefined,
+  });
   const ttl = Math.max(60, Math.floor((new Date(s.close_at).getTime() - now.getTime()) / 1000));
   const identity = who.role === 'customer' ? customerIdentity(who.id) : staffIdentity(who.id);
   const token = await createAccessToken(cfg, {
@@ -160,18 +202,27 @@ export async function onParticipantJoined(
 ): Promise<void> {
   const who = parseIdentity(identity);
   if (!who) return;
+  if (who.role === 'agent') {
+    await db
+      .prepare(`UPDATE call_sessions SET agent_joined_at = COALESCE(agent_joined_at, ?), ${touch} WHERE id = ?`)
+      .bind(at.toISOString(), s.id)
+      .run();
+    return;
+  }
   const col = who.role === 'customer' ? 'customer_joined_at' : 'staff_joined_at';
   await db
     .prepare(`UPDATE call_sessions SET ${col} = COALESCE(${col}, ?), ${touch} WHERE id = ?`)
     .bind(at.toISOString(), s.id)
     .run();
-  // 双方が揃ったら in_progress + started_at
+  // 顧客 + (オペレーター or AI エージェント) が揃ったら in_progress + started_at。
+  // AI 先行応対なので、エージェント入室でも通話開始とみなす (課金対象)。
   await db
     .prepare(
       `UPDATE call_sessions
           SET status = 'in_progress', started_at = COALESCE(started_at, ?), ${touch}
         WHERE id = ? AND status = 'scheduled'
-          AND customer_joined_at IS NOT NULL AND staff_joined_at IS NOT NULL`,
+          AND customer_joined_at IS NOT NULL
+          AND (staff_joined_at IS NOT NULL OR agent_joined_at IS NOT NULL)`,
     )
     .bind(at.toISOString(), s.id)
     .run();
@@ -319,4 +370,93 @@ export async function expireCallSessions(
     }
   }
   return { noShow };
+}
+
+// ---- モード切替 (AI ⇄ 人間) ----------------------------------------------------
+
+const MODE_TRANSITIONS: Record<CallMode, CallMode[]> = {
+  ai: ['human_requested', 'human'],
+  human_requested: ['human', 'ai'],
+  human: ['ai'],
+};
+
+export async function setCallMode(
+  db: D1Database,
+  cfg: LiveKitConfig | null,
+  s: CallSessionRow,
+  next: CallMode,
+  opts: { reason?: string; by: 'operator' | 'agent' | 'customer' | 'system'; meta?: RoomMeta },
+): Promise<{ ok: boolean; error?: string }> {
+  const cur = s.mode ?? 'ai';
+  if (cur !== next && !MODE_TRANSITIONS[cur].includes(next)) return { ok: false, error: `invalid_transition:${cur}->${next}` };
+  await db
+    .prepare(`UPDATE call_sessions SET mode = ?, handoff_reason = ?, ${touch} WHERE id = ?`)
+    .bind(next, opts.reason ?? null, s.id)
+    .run();
+  await db
+    .prepare(`INSERT INTO call_transcripts (id, call_session_id, seq, role, text, mode, at) VALUES (?,?,?,?,?,?,?)`)
+    .bind(crypto.randomUUID(), s.id, -Date.now(), 'system', `mode: ${cur} → ${next} (${opts.by}${opts.reason ? ': ' + opts.reason : ''})`, next, new Date().toISOString())
+    .run();
+  if (cfg && opts.meta) {
+    try {
+      await updateRoomMetadata(cfg, s.room_name, JSON.stringify({ ...opts.meta, mode: next }));
+    } catch (e) {
+      // room 未作成 (誰も入室前) は無視。入室時に createRoom が最新 mode を載せる。
+      if (!String(e).includes('404')) throw e;
+    }
+  }
+  return { ok: true };
+}
+
+export interface TranscriptIn {
+  seq: number;
+  role: 'customer' | 'assistant' | 'operator' | 'system';
+  text: string;
+  at: string;
+}
+
+export async function appendTranscripts(db: D1Database, s: CallSessionRow, items: TranscriptIn[]): Promise<number> {
+  if (items.length === 0) return 0;
+  const mode = s.mode ?? 'ai';
+  await db.batch(
+    items.map((t) =>
+      db
+        .prepare(`INSERT OR IGNORE INTO call_transcripts (id, call_session_id, seq, role, text, mode, at) VALUES (?,?,?,?,?,?,?)`)
+        .bind(crypto.randomUUID(), s.id, t.seq, t.role, t.text.slice(0, 4000), mode, t.at),
+    ),
+  );
+  return items.length;
+}
+
+export async function listTranscripts(db: D1Database, callSessionId: string, afterSeq = -Infinity) {
+  const rows = await db
+    .prepare(
+      `SELECT seq, role, text, mode, at FROM call_transcripts
+        WHERE call_session_id = ? ${Number.isFinite(afterSeq) ? 'AND seq > ?' : ''}
+        ORDER BY at ASC, seq ASC LIMIT 500`,
+    )
+    .bind(...(Number.isFinite(afterSeq) ? [callSessionId, afterSeq] : [callSessionId]))
+    .all<{ seq: number; role: string; text: string; mode: string; at: string }>();
+  return rows.results;
+}
+
+export async function setSummary(db: D1Database, s: CallSessionRow, summary: string): Promise<void> {
+  await db.prepare(`UPDATE call_sessions SET ai_summary = ?, ${touch} WHERE id = ?`).bind(summary.slice(0, 8000), s.id).run();
+}
+
+// ---- 録音 (Egress) ------------------------------------------------------------------
+
+export async function ensureRecording(
+  db: D1Database,
+  cfg: LiveKitConfig,
+  s3: EgressS3 | null,
+  s: CallSessionRow,
+): Promise<void> {
+  if (!s3 || s.recording_egress_id) return;
+  const filepath = `calls/${s.booking_id}/${s.id}.ogg`;
+  const { egressId } = await startAudioRecording(cfg, { room: s.room_name, filepath, s3 });
+  await db
+    .prepare(`UPDATE call_sessions SET recording_egress_id = ?, ${touch} WHERE id = ? AND recording_egress_id IS NULL`)
+    .bind(egressId, s.id)
+    .run();
 }

@@ -272,9 +272,20 @@ CREATE TABLE call_sessions (
   recording_url       TEXT,
   last_error          TEXT,
   created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
-  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')), mode TEXT NOT NULL DEFAULT 'ai', handoff_reason TEXT, ai_summary TEXT, recording_egress_id TEXT, agent_joined_at TEXT,
   FOREIGN KEY (booking_id) REFERENCES bookings(id),
   FOREIGN KEY (line_account_id) REFERENCES line_accounts(id)
+);
+
+CREATE TABLE call_transcripts (
+  id               TEXT PRIMARY KEY,
+  call_session_id  TEXT NOT NULL,
+  seq              INTEGER NOT NULL,                 -- エージェント側の通し番号 (冪等化)
+  role             TEXT NOT NULL CHECK (role IN ('customer','assistant','operator','system')),
+  text             TEXT NOT NULL,
+  mode             TEXT NOT NULL,                    -- 発話時点の mode
+  at               TEXT NOT NULL,                    -- UTC ISO8601
+  FOREIGN KEY (call_session_id) REFERENCES call_sessions(id)
 );
 
 CREATE TABLE chats (
@@ -1233,6 +1244,10 @@ CREATE INDEX idx_call_handoff_expires ON call_handoff_tokens (expires_at);
 CREATE INDEX idx_call_sessions_close ON call_sessions (status, close_at);
 
 CREATE INDEX idx_call_sessions_notify ON call_sessions (status, notified_at, notify_at);
+
+CREATE UNIQUE INDEX idx_call_transcripts_seq ON call_transcripts (call_session_id, seq);
+
+CREATE INDEX idx_call_transcripts_session ON call_transcripts (call_session_id, at);
 
 CREATE UNIQUE INDEX idx_chats_friend_unique ON chats (friend_id);
 

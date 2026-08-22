@@ -1,0 +1,6 @@
+# TLS 終端。DNS を VM に向けてから起動する。
+livekit.example.com {
+    reverse_proxy 127.0.0.1:7880
+}
+# TURN-TLS を 443 で受けたい場合 (企業 FW 対策) は別ドメインで
+# turn.example.com { ... } を L4 プロキシ (Caddy layer4 plugin) で 5349 へ

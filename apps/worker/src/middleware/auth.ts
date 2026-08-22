@@ -210,7 +210,8 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     // TalkPlatform: LiveKit webhook (署名検証は route 内) と外部ブラウザ引き継ぎ (ワンタイムトークン)
     (path === '/api/public/calls/livekit-webhook' && method === 'POST') ||
     (path.startsWith('/api/public/calls/handoff/') && method === 'POST') ||
-    (path === '/api/public/calls/lab-token' && method === 'POST')
+    (path === '/api/public/calls/lab-token' && method === 'POST') ||
+    (path === '/api/public/calls/agent-event' && method === 'POST')
   ) {
     return next();
   }

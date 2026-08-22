@@ -54,7 +54,7 @@ app.innerHTML = `
   <span id="toneRes"></span>
 
   <h2>4. LiveKit 接続</h2>
-  <input id="url" placeholder="wss://xxx.livekit.cloud" />
+  <input id="url" placeholder="wss://livekit.yourdomain.jp" />
   <details>
     <summary>トークンを Lab API で発行する (Worker に CALL_LAB_SECRET 設定時)</summary>
     <input id="api" placeholder="https://your-worker.workers.dev" />

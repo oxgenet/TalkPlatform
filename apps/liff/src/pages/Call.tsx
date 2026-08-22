@@ -77,6 +77,9 @@ export default function Call() {
           >
             {c.can_join ? (liff.isInClient() ? 'ブラウザを開いて通話する' : '通話室に入る') : '開始10分前から入室できます'}
           </button>
+          <p className="text-xs text-gray-500">
+            通話は品質向上と内容確認のため録音されます。はじめに AI アシスタントが応対し、ご希望の場合はいつでも担当者におつなぎします（「担当者に代わって」とお伝えください）。
+          </p>
           {liff.isInClient() && (
             <p className="text-xs text-gray-500">
               安定した通話のため、LINE の外のブラウザ（Safari / Chrome）で通話室を開きます。マイクの使用を許可してください。

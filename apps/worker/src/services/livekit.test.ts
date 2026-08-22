@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { createAccessToken, signHs256, verifyHs256, verifyWebhook } from './livekit.js';
 
-const cfg = { url: 'wss://x.livekit.cloud', apiKey: 'APIkey', apiSecret: 'secret-secret-secret' };
+const cfg = { url: 'wss://livekit.example.jp', apiKey: 'APIkey', apiSecret: 'secret-secret-secret' };
 
 function decodePayload(jwt: string) {
   const b = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');

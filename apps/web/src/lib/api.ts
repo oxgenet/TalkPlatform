@@ -1880,14 +1880,38 @@ export interface CallState {
     started_at: string | null;
     ended_at: string | null;
     billable_seconds: number | null;
+    mode: CallMode;
+    handoff_reason: string | null;
+    ai_summary: string | null;
+    agent_joined_at: string | null;
+    recording: boolean;
   } | null;
   now: string;
+}
+
+export type CallMode = 'ai' | 'human_requested' | 'human';
+
+export interface TranscriptItem {
+  seq: number;
+  role: 'customer' | 'assistant' | 'operator' | 'system';
+  text: string;
+  mode: string;
+  at: string;
 }
 
 export const callApi = {
   state: (bookingId: string) => fetchApi<CallState>(`/api/calls/${bookingId}`),
   token: (bookingId: string) =>
     fetchApi<{ token: string; url: string; room: string }>(`/api/calls/${bookingId}/token`, { method: 'POST' }),
+  setMode: (bookingId: string, mode: CallMode, reason?: string) =>
+    fetchApi<{ ok: boolean; mode: CallMode }>(`/api/calls/${bookingId}/mode`, {
+      method: 'POST',
+      body: JSON.stringify({ mode, reason }),
+    }),
+  transcript: (bookingId: string) =>
+    fetchApi<{ items: TranscriptItem[]; summary: string | null; mode: CallMode; handoff_reason: string | null }>(
+      `/api/calls/${bookingId}/transcript`,
+    ),
 };
 
 // ============================================================

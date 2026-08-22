@@ -6,7 +6,7 @@
 // webhook (Authorization: <JWT> / claim sha256 = base64(SHA-256(body))) に従う。
 
 export interface LiveKitConfig {
-  url: string; // wss://xxx.livekit.cloud
+  url: string; // wss://livekit.yourdomain.jp (セルフホスト)
   apiKey: string;
   apiSecret: string;
 }
@@ -19,6 +19,7 @@ export interface VideoGrant {
   canPublishData?: boolean;
   roomCreate?: boolean;
   roomAdmin?: boolean;
+  roomRecord?: boolean;
 }
 
 export interface AccessTokenOptions {
@@ -154,14 +155,69 @@ async function twirp<T>(cfg: LiveKitConfig, method: string, body: unknown, grant
 
 export async function createRoom(
   cfg: LiveKitConfig,
-  opts: { name: string; emptyTimeoutSec?: number; maxParticipants?: number },
+  opts: { name: string; emptyTimeoutSec?: number; maxParticipants?: number; metadata?: string },
 ): Promise<void> {
   await twirp(
     cfg,
     'CreateRoom',
-    { name: opts.name, empty_timeout: opts.emptyTimeoutSec ?? 120, max_participants: opts.maxParticipants ?? 2 },
+    {
+      name: opts.name,
+      empty_timeout: opts.emptyTimeoutSec ?? 120,
+      max_participants: opts.maxParticipants ?? 3,
+      metadata: opts.metadata,
+    },
     { roomCreate: true },
   );
+}
+
+// Room metadata は「モード (ai / human)」の単一の真実源。Worker が書き、エージェントと
+// クライアントは RoomMetadataChanged で追従する。
+export async function updateRoomMetadata(cfg: LiveKitConfig, room: string, metadata: string): Promise<void> {
+  await twirp(cfg, 'UpdateRoomMetadata', { room, metadata }, { roomAdmin: true, room });
+}
+
+// ---- Egress (録音) ----------------------------------------------------------------
+// セルフホストの egress サービスが S3 互換 (MinIO 等) に音声のみの合成録音を書く。
+
+export interface EgressS3 {
+  bucket: string;
+  endpoint: string;      // 例: http://minio:9000
+  accessKey: string;
+  secret: string;
+  region?: string;
+  forcePathStyle?: boolean;
+}
+
+export async function startAudioRecording(
+  cfg: LiveKitConfig,
+  opts: { room: string; filepath: string; s3: EgressS3 },
+): Promise<{ egressId: string }> {
+  const token = await createAccessToken(cfg, { identity: 'server', ttlSeconds: 60, grant: { roomRecord: true, room: opts.room } as VideoGrant });
+  const res = await fetch(`${httpBase(cfg.url)}/twirp/livekit.Egress/StartRoomCompositeEgress`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      room_name: opts.room,
+      audio_only: true,
+      file_outputs: [
+        {
+          file_type: 'OGG',
+          filepath: opts.filepath,
+          s3: {
+            access_key: opts.s3.accessKey,
+            secret: opts.s3.secret,
+            region: opts.s3.region ?? 'us-east-1',
+            endpoint: opts.s3.endpoint,
+            bucket: opts.s3.bucket,
+            force_path_style: opts.s3.forcePathStyle ?? true,
+          },
+        },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`LiveKit StartRoomCompositeEgress failed: ${res.status} ${await res.text()}`);
+  const j = (await res.json()) as { egress_id?: string; egressId?: string };
+  return { egressId: j.egress_id ?? j.egressId ?? '' };
 }
 
 export async function deleteRoom(cfg: LiveKitConfig, room: string): Promise<void> {

@@ -1,0 +1,24 @@
+# livekit-server 設定 (セルフホスト)。keys は .env の値と一致させること。
+port: 7880
+bind_addresses: ["0.0.0.0"]
+rtc:
+  udp_port: 7881                 # 単一 UDP ポート (mux)。FW で UDP/7881 を開ける
+  tcp_port: 7882                 # UDP が通らない環境向け ICE-TCP
+  use_external_ip: true          # クラウド VM (NAT 背後) では必須
+redis:
+  address: 127.0.0.1:6379
+keys:
+  # 例: devkey: secret  ← .env の LIVEKIT_API_KEY / LIVEKIT_API_SECRET と同じものを書く
+  REPLACE_WITH_API_KEY: REPLACE_WITH_API_SECRET
+turn:
+  enabled: true
+  domain: livekit.example.com    # TURN-TLS 用 (Caddy の証明書を共有するか、external_tls で前段終端)
+  tls_port: 5349
+  udp_port: 3478
+  external_tls: true
+room:
+  auto_create: false             # Worker が CreateRoom するので自動作成は無効
+  empty_timeout: 120
+  max_participants: 3
+logging:
+  level: info

@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
+  appendTranscripts,
+  setCallMode,
   ensureCallSession,
   isJoinWindowOpen,
   onParticipantJoined,
@@ -52,6 +54,11 @@ const base: CallSessionRow = {
   started_at: null,
   ended_at: null,
   billable_seconds: null,
+  mode: 'ai',
+  handoff_reason: null,
+  ai_summary: null,
+  recording_egress_id: null,
+  agent_joined_at: null,
 };
 
 describe('ensureCallSession', () => {
@@ -105,6 +112,12 @@ describe('onParticipantJoined', () => {
     expect(runs[0].sql).toContain('staff_joined_at = COALESCE(staff_joined_at');
     expect(runs[1].sql).toContain("status = 'in_progress'");
   });
+  test('agent identity writes agent_joined_at only', async () => {
+    const { db, runs } = fakeDb({});
+    await onParticipantJoined(db, base, 'agent', new Date());
+    expect(runs).toHaveLength(1);
+    expect(runs[0].sql).toContain('agent_joined_at');
+  });
 });
 
 describe('onRoomFinished', () => {
@@ -133,6 +146,33 @@ describe('onRoomFinished', () => {
     const { db, runs } = fakeDb({ first: () => ({ ...base, status: 'ended' }) });
     expect((await onRoomFinished(db, base, new Date())).outcome).toBe('ignored');
     expect(runs).toHaveLength(0);
+  });
+});
+
+describe('setCallMode', () => {
+  test('valid and invalid transitions', async () => {
+    const { db, runs } = fakeDb({});
+    expect((await setCallMode(db, null, base, 'human', { by: 'operator' })).ok).toBe(true);
+    expect(runs.some((r) => r.sql.includes('SET mode = ?') && r.params[0] === 'human')).toBe(true);
+    expect(runs.some((r) => r.sql.includes('INSERT INTO call_transcripts') && r.params[3] === 'system')).toBe(true);
+    const r = await setCallMode(db, null, { ...base, mode: 'human' }, 'human_requested', { by: 'agent' });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/invalid_transition/);
+  });
+});
+
+describe('appendTranscripts', () => {
+  test('batch insert with INSERT OR IGNORE for idempotency', async () => {
+    const { db, runs } = fakeDb({});
+    const n = await appendTranscripts(db, base, [
+      { seq: 1, role: 'customer', text: 'こんにちは', at: '2026-08-22T10:00:01Z' },
+      { seq: 2, role: 'assistant', text: 'お電話ありがとうございます', at: '2026-08-22T10:00:03Z' },
+    ]);
+    expect(n).toBe(2);
+    expect(runs).toHaveLength(2);
+    expect(runs[0].sql).toContain('INSERT OR IGNORE INTO call_transcripts');
+    expect(runs[0].params[2]).toBe(1);
+    expect(runs[1].params[3]).toBe('assistant');
   });
 });
 
