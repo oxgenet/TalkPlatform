@@ -30,11 +30,13 @@ from livekit.agents import (
     RoomInputOptions,
     RunContext,
     StopResponse,
+    TurnHandlingOptions,
     WorkerOptions,
     cli as lk_cli,
     function_tool,
     llm,
 )
+from livekit.agents.voice.turn import EndpointingOptions, InterruptionOptions
 from livekit.plugins import openai, silero, xai
 
 from .config import Config
@@ -132,12 +134,19 @@ async def entrypoint(ctx: JobContext) -> None:
     await worker.start()
     agent = TalkAgent(cfg, meta, worker)
 
+    # セルフホスト方針: LiveKit Cloud の推論 (adaptive interruption / cloud turn detector) に
+    # 接続しないよう、ターン検出・割り込み検知はローカル VAD に明示固定する。
+    # (1.7 系は未指定だと agent-gateway.livekit.cloud へ接続を試みる)
     session = AgentSession(
         vad=ctx.proc.userdata["vad"],
         stt=xai.STT(language=cfg.language, enable_interim_results=True),
         llm=openai.LLM.with_x_ai(model=cfg.llm_model),
         tts=xai.TTS(voice=cfg.tts_voice, language=cfg.language),
-        min_endpointing_delay=0.4,
+        turn_handling=TurnHandlingOptions(
+            turn_detection="vad",
+            interruption=InterruptionOptions(enabled=True, mode="vad", min_duration=0.5, min_words=0),
+            endpointing=EndpointingOptions(min_delay=0.4),
+        ),
     )
 
     # ---- 文字起こし → Worker ----

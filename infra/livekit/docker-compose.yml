@@ -69,7 +69,7 @@ services:
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
       XAI_API_KEY: ${XAI_API_KEY}
-      TALK_LLM_MODEL: ${TALK_LLM_MODEL:-grok-4-fast}
+      TALK_LLM_MODEL: ${TALK_LLM_MODEL:-grok-4-fast-non-reasoning}
       TALK_TTS_VOICE: ${TALK_TTS_VOICE:-ara}
       TALK_LANGUAGE: ja
       TALK_WORKER_URL: ${TALK_WORKER_URL}

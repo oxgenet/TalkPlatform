@@ -22,7 +22,7 @@ class Config:
         return Config(
             worker_url=os.environ.get("TALK_WORKER_URL", "").rstrip("/"),
             agent_secret=os.environ.get("CALL_AGENT_SECRET", ""),
-            llm_model=os.environ.get("TALK_LLM_MODEL", "grok-4-fast"),
+            llm_model=os.environ.get("TALK_LLM_MODEL", "grok-4-fast-non-reasoning"),
             tts_voice=os.environ.get("TALK_TTS_VOICE", "ara"),
             language=os.environ.get("TALK_LANGUAGE", "ja"),
             system_prompt=system_prompt,

@@ -72,7 +72,8 @@ export function staffIdentity(staffId: string): string {
   return `staff:${staffId}`;
 }
 export function parseIdentity(identity: string): { role: CallRole | 'agent'; id: string } | null {
-  if (identity === AGENT_IDENTITY) return { role: 'agent', id: AGENT_IDENTITY };
+  // LiveKit Agents の identity は "agent-<job id>" 形式 (固定名を指定しない限り)
+  if (identity === AGENT_IDENTITY || identity.startsWith(`${AGENT_IDENTITY}-`)) return { role: 'agent', id: identity };
   const m = /^(customer|staff):(.+)$/.exec(identity);
   return m ? { role: m[1] as CallRole, id: m[2] } : null;
 }

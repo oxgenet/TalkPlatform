@@ -102,6 +102,7 @@ describe('parseIdentity', () => {
     expect(parseIdentity('customer:f1')).toEqual({ role: 'customer', id: 'f1' });
     expect(parseIdentity('staff:s1')).toEqual({ role: 'staff', id: 's1' });
     expect(parseIdentity('server')).toBeNull();
+    expect(parseIdentity('agent-AJ_oQAMj2k6usqw')?.role).toBe('agent');
   });
 });
 
