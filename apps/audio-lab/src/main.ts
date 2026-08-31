@@ -53,10 +53,18 @@ app.innerHTML = `
   <button id="btnTone" class="secondary">テストトーン再生</button>
   <span id="toneRes"></span>
 
-  <h2>4. LiveKit 接続</h2>
+  <h2>4. AI と会話 (ワンタップ)</h2>
+  <p>ローカルの LiveKit + AI エージェントに <code>customer:</code> として入室します。エージェントが起動していれば冒頭案内が流れます。</p>
+  <div class="row">
+    <input id="myname" placeholder="あなたの名前 (例: taka)" style="max-width: 200px" />
+    <button id="btnAi">AI と会話を始める</button>
+  </div>
+  <div id="captions" style="margin-top:.5rem"></div>
+
+  <h2>5. LiveKit 接続 (手動)</h2>
   <input id="url" placeholder="wss://livekit.yourdomain.jp" />
   <details>
-    <summary>トークンを Lab API で発行する (Worker に CALL_LAB_SECRET 設定時)</summary>
+    <summary>トークンを Worker の Lab API で発行する (CALL_LAB_SECRET 設定時)</summary>
     <input id="api" placeholder="https://your-worker.workers.dev" />
     <input id="secret" placeholder="CALL_LAB_SECRET" type="password" />
     <input id="room" placeholder="room (例: lab-1)" />
@@ -190,6 +198,40 @@ $('btnConnect').onclick = () => {
 $('btnMute').onclick = () => void session.setMuted(!session.state.muted);
 $('btnResume').onclick = () => void session.resumeAudio();
 $('btnHangup').onclick = () => void session.disconnect();
+// ---- AI と会話 ----
+const captions: string[] = [];
+function addCaption(who: string, text: string, final: boolean) {
+  const line = `${who}: ${text}`;
+  if (final) captions.push(line);
+  $('captions').innerHTML = captions.slice(-8).map((l) => `<div>${l}</div>`).join('') + (final ? '' : `<div style="opacity:.6">${line}</div>`);
+}
+$('btnAi').onclick = async () => {
+  stopMic();
+  const name = ($<HTMLInputElement>('myname').value || 'guest').trim();
+  const identity = `customer:${name.replace(/[^a-zA-Z0-9_.-]/g, '') || 'guest'}`;
+  const roomId = Math.random().toString(36).slice(2, 6);
+  const res = await fetch('/lab/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: roomId, identity, name }) });
+  if (!res.ok) { $('err').textContent = `/lab/token ${res.status}`; return; }
+  const j = await res.json();
+  $<HTMLInputElement>('url').value = j.url; $<HTMLInputElement>('token').value = j.token;
+  captions.length = 0; $('captions').textContent = '';
+  await session.connect({
+    url: j.url, token: j.token,
+    micDeviceId: $<HTMLSelectElement>('mics').value || undefined,
+    echoCancellation: $<HTMLInputElement>('ec').checked,
+    noiseSuppression: $<HTMLInputElement>('ns').checked,
+    autoGainControl: $<HTMLInputElement>('agc').checked,
+  });
+  // エージェントが流す字幕 (lk.transcription テキストストリーム) を表示
+  const room = session.livekitRoom;
+  room?.registerTextStreamHandler('lk.transcription', async (reader, participant) => {
+    const who = participant?.identity?.startsWith('customer:') ? 'あなた' : 'AI';
+    let text = '';
+    for await (const chunk of reader) { text += chunk; addCaption(who, text, false); }
+    addCaption(who, text, true);
+  });
+};
+
 $('btnCopy').onclick = () => {
   const report = { env, perm: $('perm').textContent, track: $('track').textContent, state: { ...session.state, log: undefined }, log: session.state.log };
   void navigator.clipboard.writeText(JSON.stringify(report, null, 1)).then(() => alert('コピーしました'));
