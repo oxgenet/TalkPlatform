@@ -11,6 +11,7 @@ def cfg() -> Config:
     return Config(
         worker_url="", agent_secret="", llm_model="grok-4-fast", tts_voice="ara", language="ja",
         system_prompt="sys", opening_text="open", allow_lab_rooms=False,
+        mcp_url="", mcp_token="", mcp_tools=[],
     )
 
 
