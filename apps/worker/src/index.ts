@@ -77,6 +77,7 @@ import { adminAuth } from './routes/admin-auth.js';
 import { resolveCorsOrigin } from './middleware/admin-auth-config.js';
 import booking from './routes/booking.js';
 import calls, { livekitConfig } from './routes/calls.js';
+import service from './routes/service.js';
 import { expireCallSessions, processCallNotifications } from './services/call-session.js';
 import { sendCallLinkNotification } from './services/call-notifier.js';
 import events from './routes/events.js';
@@ -158,6 +159,9 @@ export type Env = {
     LIVEKIT_API_SECRET?: string;
     CALL_LAB_SECRET?: string; // Audio Lab 用 (開発環境のみ設定。16 文字以上)
     CALL_AGENT_SECRET?: string; // AI エージェント → Worker のイベント認証 (16 文字以上)
+    // サービス層 API (アプリ層向け): "org:sk_xxxx,org2:sk_yyyy" (key は 16 文字以上)
+    SERVICE_API_KEYS?: string;
+    SERVICE_CORS_ORIGINS?: string; // 許可する Web アプリ origin (カンマ区切り)
     // 録音 (LiveKit Egress → S3 互換。セルフホストは MinIO)
     RECORDING_S3_BUCKET?: string;
     RECORDING_S3_ENDPOINT?: string;
@@ -250,6 +254,7 @@ app.route('/', adminAuth);
 app.route('/', trafficPools);
 app.route('/', booking);
 app.route('/', calls); // TalkPlatform
+app.route('/', service); // TalkPlatform サービス層
 app.route('/', events);
 app.route('/', accountSettings);
 app.route('/', meetCallback);

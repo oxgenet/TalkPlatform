@@ -37,6 +37,7 @@ from livekit.agents import (
     llm,
 )
 from livekit.agents.voice.turn import EndpointingOptions, InterruptionOptions
+from livekit.agents import mcp as lk_mcp
 from livekit.plugins import openai, silero, xai
 
 from .config import Config
@@ -63,7 +64,13 @@ def parse_meta(raw: str | None) -> dict[str, Any] | None:
 class TalkAgent(Agent):
     """mode に応じて応答するかどうかを切り替える単一エージェント。"""
 
-    def __init__(self, cfg: Config, meta: dict[str, Any], worker: WorkerClient) -> None:
+    def __init__(
+        self,
+        cfg: Config,
+        meta: dict[str, Any],
+        worker: WorkerClient,
+        mcp_servers: "list[lk_mcp.MCPServer] | None" = None,
+    ) -> None:
         ctx_lines = [cfg.system_prompt, "", "## この通話の情報"]
         if meta.get("customer_name"):
             ctx_lines.append(f"- お客様の名前: {meta['customer_name']}")
@@ -71,7 +78,7 @@ class TalkAgent(Agent):
             ctx_lines.append(f"- 予約メニュー: {meta['menu_name']}")
         if meta.get("staff_name"):
             ctx_lines.append(f"- 担当者: {meta['staff_name']}")
-        super().__init__(instructions="\n".join(ctx_lines))
+        super().__init__(instructions="\n".join(ctx_lines), mcp_servers=mcp_servers or None)
         self.cfg = cfg
         self.worker = worker
         self.mode: str = meta.get("mode", "ai")
@@ -132,7 +139,23 @@ async def entrypoint(ctx: JobContext) -> None:
 
     worker = WorkerClient(cfg.worker_url, cfg.agent_secret, room.name)
     await worker.start()
-    agent = TalkAgent(cfg, meta, worker)
+
+    # コンポーネント層: 占い AI (spiritualMCP) を別サービス・別組織として MCP 経由で使う。
+    # 接続先とキーは環境変数 (組織 = TalkPlatform としての Bearer キー)。LLM はセッション中
+    # に必要なツール (create_chart / get_reading 等) を自律的に呼ぶ。
+    mcp_servers: list[lk_mcp.MCPServer] = []
+    if cfg.mcp_url:
+        mcp_servers.append(
+            lk_mcp.MCPServerHTTP(
+                cfg.mcp_url,
+                headers={"Authorization": f"Bearer {cfg.mcp_token}"} if cfg.mcp_token else None,
+                allowed_tools=cfg.mcp_tools or None,
+                client_session_timeout_seconds=15,
+            )
+        )
+        log.info("fortune MCP enabled: %s (tools=%s)", cfg.mcp_url, cfg.mcp_tools or "all")
+
+    agent = TalkAgent(cfg, meta, worker, mcp_servers=mcp_servers)
 
     # セルフホスト方針: LiveKit Cloud の推論 (adaptive interruption / cloud turn detector) に
     # 接続しないよう、ターン検出・割り込み検知はローカル VAD に明示固定する。

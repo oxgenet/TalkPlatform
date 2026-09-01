@@ -13,6 +13,9 @@ class Config:
     system_prompt: str
     opening_text: str
     allow_lab_rooms: bool
+    mcp_url: str          # 占い MCP (spiritualMCP 等) の SSE URL。空 = 無効
+    mcp_token: str        # 組織別 Bearer キー (SPIRITUAL_MCP_ORG_KEYS に対応)
+    mcp_tools: list[str]  # 許可ツール名。空 = 全許可
 
     @staticmethod
     def load() -> "Config":
@@ -32,4 +35,7 @@ class Config:
                 "担当者におつなぎすることもできますので、お気軽にお申し付けください。ご用件をどうぞ。",
             ),
             allow_lab_rooms=os.environ.get("TALK_ALLOW_LAB_ROOMS", "false").lower() in ("1", "true", "yes"),
+            mcp_url=os.environ.get("TALK_MCP_URL", "").strip(),
+            mcp_token=os.environ.get("TALK_MCP_TOKEN", "").strip(),
+            mcp_tools=[t.strip() for t in os.environ.get("TALK_MCP_TOOLS", "").split(",") if t.strip()],
         )

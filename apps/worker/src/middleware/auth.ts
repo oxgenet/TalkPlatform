@@ -211,7 +211,9 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     (path === '/api/public/calls/livekit-webhook' && method === 'POST') ||
     (path.startsWith('/api/public/calls/handoff/') && method === 'POST') ||
     (path === '/api/public/calls/lab-token' && method === 'POST') ||
-    (path === '/api/public/calls/agent-event' && method === 'POST')
+    (path === '/api/public/calls/agent-event' && method === 'POST') ||
+    // TalkPlatform サービス層 API — 組織別 API キー認証は route 内 (routes/service.ts)
+    path.startsWith('/api/service/')
   ) {
     return next();
   }

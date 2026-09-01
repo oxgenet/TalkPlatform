@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "TalkPlatform AI voice agent (LiveKit Agents + xAI Grok STT/LLM/TTS) with human-operator handoff"
 requires-python = ">=3.11"
 dependencies = [
-  "livekit-agents>=1.7.0,<2",
+  "livekit-agents[mcp]>=1.7.0,<2",
   "livekit-plugins-xai>=1.7.0,<2",
   "livekit-plugins-openai>=1.7.0,<2",
   "livekit-plugins-silero>=1.7.0,<2",

@@ -1,0 +1,25 @@
+{
+  "name": "standalone",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TalkPlatform standalone web platform (app layer) — browser AI voice consultation without LINE",
+  "scripts": {
+    "dev": "vite --port 5175",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@talkplatform/call-audio": "workspace:*",
+    "@talkplatform/talk-client": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

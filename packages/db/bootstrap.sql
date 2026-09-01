@@ -979,6 +979,20 @@ CREATE TABLE staff_shifts (
   FOREIGN KEY (staff_id) REFERENCES staff(id)
 );
 
+CREATE TABLE standalone_sessions (
+  id            TEXT PRIMARY KEY,
+  org_id        TEXT NOT NULL,                     -- SERVICE_API_KEYS の組織 ID
+  room_name     TEXT NOT NULL UNIQUE,              -- "sa-<id>"
+  display_name  TEXT,
+  scenario_id   TEXT,                              -- 会話 DSL (将来)。NULL = 既定
+  status        TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','ended','expired')),
+  expires_at    TEXT NOT NULL,                     -- UTC ISO8601: 発行から 2h
+  started_at    TEXT,
+  ended_at      TEXT,
+  billable_seconds INTEGER,
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
 CREATE TABLE stripe_events (
   id               TEXT PRIMARY KEY,
   stripe_event_id  TEXT NOT NULL UNIQUE,
@@ -1420,6 +1434,10 @@ CREATE INDEX idx_staff_availability_rules_staff
 CREATE UNIQUE INDEX idx_staff_members_api_key ON staff_members(api_key);
 
 CREATE INDEX idx_staff_members_role ON staff_members(role);
+
+CREATE INDEX idx_standalone_expires ON standalone_sessions (status, expires_at);
+
+CREATE INDEX idx_standalone_org ON standalone_sessions (org_id, created_at DESC);
 
 CREATE INDEX idx_stripe_events_friend ON stripe_events (friend_id);
 

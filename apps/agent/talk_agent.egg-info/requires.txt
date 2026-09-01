@@ -1,4 +1,4 @@
-livekit-agents<2,>=1.7.0
+livekit-agents[mcp]<2,>=1.7.0
 livekit-plugins-xai<2,>=1.7.0
 livekit-plugins-openai<2,>=1.7.0
 livekit-plugins-silero<2,>=1.7.0

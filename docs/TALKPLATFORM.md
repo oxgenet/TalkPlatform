@@ -80,6 +80,17 @@ LiveKit Webhook (participant_joined / room_finished)
 - 録音が必要なら LiveKit Egress (audio only) を有効化し、`egress_ended` Webhook で `recording_url` が入る。
 - `booking_reminders.kind` の CHECK 制約を触らず、通知状態は `call_sessions.notified_at` で管理 (上流追従を優先)。
 
+## 3 レイヤー構造
+
+| レイヤー | 実体 |
+|---|---|
+| サービス層 (LLM 制御 / 性格 / 課金) | `apps/worker` の calls/service ルート + `apps/agent` (会話 DSL は #793〜) |
+| アプリ層 (LINE / 他 PF / スタンドアローン) | LIFF + L Harness (LINE)、`apps/standalone` + `packages/talk-client` (Web) |
+| コンポーネント層 (占い AI / 音声処理) | spiritualMCP (別サービス・別組織、MCP over SSE + 組織別 Bearer)、LiveKit + `packages/call-audio` + xAI STT/TTS |
+
+- **サービス層 API**: `POST /api/service/sessions` (認証: `SERVICE_API_KEYS="org:sk_…"`、CORS: `SERVICE_CORS_ORIGINS`) → `{token, url, room}`。予約不要の通話セッション (`standalone_sessions`, migration 073)。
+- **占い MCP**: エージェントは `TALK_MCP_URL` / `TALK_MCP_TOKEN` / `TALK_MCP_TOOLS` で spiritualMCP に接続 (`livekit-agents[mcp]`)。spiritualMCP 側は `SPIRITUAL_MCP_ORG_KEYS="talkplatform:tk_…"` で組織別 Bearer 認証 (未設定なら従来通り認証なし)。
+
 ## AI エージェントと人間オペレーターの切替
 
 ```

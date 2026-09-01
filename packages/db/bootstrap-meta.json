@@ -76,7 +76,8 @@
     "069_rich_menu_selected.sql",
     "070_admin_sso_jti.sql",
     "071_call_sessions.sql",
-    "072_call_ai_agent.sql"
+    "072_call_ai_agent.sql",
+    "073_standalone_sessions.sql"
   ],
-  "migrationCount": 77
+  "migrationCount": 78
 }

@@ -3,7 +3,7 @@ Name: talk-agent
 Version: 0.1.0
 Summary: TalkPlatform AI voice agent (LiveKit Agents + xAI Grok STT/LLM/TTS) with human-operator handoff
 Requires-Python: >=3.11
-Requires-Dist: livekit-agents<2,>=1.7.0
+Requires-Dist: livekit-agents[mcp]<2,>=1.7.0
 Requires-Dist: livekit-plugins-xai<2,>=1.7.0
 Requires-Dist: livekit-plugins-openai<2,>=1.7.0
 Requires-Dist: livekit-plugins-silero<2,>=1.7.0
