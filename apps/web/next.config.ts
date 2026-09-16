@@ -22,7 +22,7 @@ const buildTime = process.env.APP_BUILD_TIME || new Date().toISOString()
 
 const nextConfig: NextConfig = {
   output: 'export',
-  transpilePackages: ['@line-crm/shared'],
+  transpilePackages: ['@line-crm/shared', '@talkplatform/call-audio'],
   env: {
     APP_VERSION: pkg.version,
     APP_COMMIT_SHA: buildSha.slice(0, 12),

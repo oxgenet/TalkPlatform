@@ -1,0 +1,96 @@
+# TalkPlatform セルフホスト構成 (1 ノード)
+#   livekit  : SFU + 内蔵 TURN (UDP 7881 / TURN-TLS 5349)。WebSocket は 7880 をリバースプロキシ (Caddy) 経由で公開
+#   redis    : LiveKit のルーム状態・Egress ジョブキュー (マルチノード化の前提でもある)
+#   egress   : 録音 (音声のみ) → MinIO (S3 互換)
+#   minio    : 録音ファイル保存 (本番では外部 S3 互換 or 自社 NAS でも可)
+#   agent    : AI 音声エージェント (ワーカープール。replicas で水平展開)
+#   caddy    : TLS 終端 (Let's Encrypt)。livekit.<domain> → livekit:7880
+#
+# 事前に .env を用意 (infra/livekit/.env.example 参照)。
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+    networks: [lk]
+
+  livekit:
+    image: livekit/livekit-server:v1.9
+    command: ["--config", "/etc/livekit.yaml"]
+    restart: unless-stopped
+    network_mode: host          # UDP/ICE のため host ネットワーク (Linux 前提)
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    depends_on: [redis]
+
+  egress:
+    image: livekit/egress:v1.9
+    restart: unless-stopped
+    environment:
+      EGRESS_CONFIG_FILE: /etc/egress.yaml
+    volumes:
+      - ./egress.yaml:/etc/egress.yaml:ro
+    cap_add: [SYS_ADMIN]
+    network_mode: host
+    depends_on: [redis, livekit]
+
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${RECORDING_S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${RECORDING_S3_SECRET}
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    volumes: [minio-data:/data]
+    networks: [lk]
+
+  minio-init:
+    image: minio/mc:latest
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        until mc alias set local http://minio:9000 "$RECORDING_S3_ACCESS_KEY" "$RECORDING_S3_SECRET"; do sleep 1; done;
+        mc mb -p local/${RECORDING_S3_BUCKET:-talk-recordings} || true;
+        mc ilm add --expire-days ${RECORDING_RETENTION_DAYS:-90} local/${RECORDING_S3_BUCKET:-talk-recordings} || true
+    environment:
+      RECORDING_S3_ACCESS_KEY: ${RECORDING_S3_ACCESS_KEY}
+      RECORDING_S3_SECRET: ${RECORDING_S3_SECRET}
+      RECORDING_S3_BUCKET: ${RECORDING_S3_BUCKET:-talk-recordings}
+      RECORDING_RETENTION_DAYS: ${RECORDING_RETENTION_DAYS:-90}
+    depends_on: [minio]
+    networks: [lk]
+
+  agent:
+    build: ../../apps/agent
+    restart: unless-stopped
+    environment:
+      LIVEKIT_URL: ws://127.0.0.1:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      XAI_API_KEY: ${XAI_API_KEY}
+      TALK_LLM_MODEL: ${TALK_LLM_MODEL:-grok-4-fast-non-reasoning}
+      TALK_TTS_VOICE: ${TALK_TTS_VOICE:-ara}
+      TALK_LANGUAGE: ja
+      TALK_WORKER_URL: ${TALK_WORKER_URL}
+      CALL_AGENT_SECRET: ${CALL_AGENT_SECRET}
+      TALK_ALLOW_LAB_ROOMS: ${TALK_ALLOW_LAB_ROOMS:-false}
+    network_mode: host
+    deploy:
+      replicas: 1              # 同時通話数に応じて増やす (1 プロセスで複数 job を処理。目安 10〜20 通話/プロセス)
+    depends_on: [livekit]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+volumes:
+  minio-data:
+  caddy-data:
+
+networks:
+  lk:

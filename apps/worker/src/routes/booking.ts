@@ -27,6 +27,7 @@ import {
 } from '../services/booking-idempotency.js';
 import { sendBookingNotification } from '../services/booking-notifier.js';
 import { insertConfirmationReminders } from '../services/booking-confirm.js';
+import { cancelCallSession, ensureCallSession } from '../services/call-session.js';
 import { attachTagAndFireSideEffects } from '../services/friend-tag-attach.js';
 import {
   DEFAULT_ACCOUNT_SETTINGS,
@@ -98,7 +99,7 @@ export function jstDayWindowUtc(jstDate: string): { startUtc: string; endUtc: st
   };
 }
 
-async function resolveAccountIdFromLiff(c: Context<Env>): Promise<string | null> {
+export async function resolveAccountIdFromLiff(c: Context<Env>): Promise<string | null> {
   const liffId = c.req.query('liffId');
   if (!liffId) return null;
   const acc = await c.env.DB
@@ -118,7 +119,7 @@ async function resolveAccountIdFromLiff(c: Context<Env>): Promise<string | null>
 //      ではなく Messaging channel に紐付けてる構成への保険
 //   4. id_token の aud claim を base64 デコードして直接抽出 — どの DB 値とも
 //      一致しない場合の最後の手段（LIFF が独自に発行する場合）
-async function verifyCallerLineUserId(c: Context<Env>): Promise<string | null> {
+export async function verifyCallerLineUserId(c: Context<Env>): Promise<string | null> {
   const auth = c.req.header('Authorization');
   if (!auth || !auth.startsWith('Bearer ')) return null;
   const idToken = auth.slice('Bearer '.length).trim();
@@ -201,7 +202,7 @@ async function assertStaffInAccount(
 // マルチアカウント環境で、別 tenant の friend 行を再利用しないようにする。
 // line_account_id が NULL の旧データ（multi-account 化前）は account 一致が判定できないので
 // 安全側として除外（必要なら個別にバックフィルする）。
-async function resolveFriendId(
+export async function resolveFriendId(
   c: Context<Env>,
   lineUserId: string,
   accountId: string,
@@ -905,6 +906,7 @@ booking.post('/api/booking/admin/bookings', async (c) => {
     startsAt,
     now: new Date(),
   });
+  await ensureCallSession(c.env.DB, { bookingId, now: new Date() }); // TalkPlatform
   let calendarSync: 'not_configured' | 'synced' | 'failed' = 'not_configured';
   try {
     const synced = await syncConfirmedBookingToGoogle(
@@ -1584,6 +1586,7 @@ booking.patch('/api/booking/admin/requests/:id', async (c) => {
       startsAt: new Date(row.starts_at),
       now: new Date(),
     });
+    await ensureCallSession(c.env.DB, { bookingId: id, now: new Date() }); // TalkPlatform
     try {
       await syncConfirmedBookingToGoogle(c.env.DB, googleCredentials(c.env), id);
     } catch (error) {
@@ -1607,6 +1610,7 @@ booking.patch('/api/booking/admin/requests/:id', async (c) => {
       )
       .bind(id)
       .run();
+    await cancelCallSession(c.env.DB, id); // TalkPlatform
     c.executionCtx.waitUntil(
       removeBookingFromGoogle(c.env.DB, googleCredentials(c.env), id).catch((error) =>
         console.error('Google Calendar delete failed:', error),

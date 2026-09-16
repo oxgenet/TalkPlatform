@@ -1,0 +1,24 @@
+{
+  "name": "audio-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TalkPlatform audio lab — standalone LiveKit/WebRTC audio verification page (no LINE, no bookings)",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "typecheck": "tsc --noEmit",
+    "token": "tsx scripts/mint-token.ts"
+  },
+  "dependencies": {
+    "@talkplatform/call-audio": "workspace:*",
+    "livekit-client": "^2.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^1.2.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

@@ -1,0 +1,23 @@
+[project]
+name = "talk-agent"
+version = "0.1.0"
+description = "TalkPlatform AI voice agent (LiveKit Agents + xAI Grok STT/LLM/TTS) with human-operator handoff"
+requires-python = ">=3.11"
+dependencies = [
+  "livekit-agents[mcp]>=1.7.0,<2",
+  "livekit-plugins-xai>=1.7.0,<2",
+  "livekit-plugins-openai>=1.7.0,<2",
+  "livekit-plugins-silero>=1.7.0,<2",
+  "aiohttp>=3.9",
+  "python-dotenv>=1.0",
+]
+
+[project.scripts]
+talk-agent = "talk_agent.main:cli"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["talk_agent*"]

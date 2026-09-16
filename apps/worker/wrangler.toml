@@ -49,6 +49,11 @@ WORKER_PUBLIC_URL = "https://line-harness.workers.dev"
 ADMIN_PUBLIC_URL = "https://line-harness-admin.pages.dev"
 LIFF_PUBLIC_URL = "https://line-harness-liff.pages.dev"
 CF_ACCOUNT_ID = "YOUR_DEV_ACCOUNT_ID"
+# TalkPlatform: LiveKit (音声通話)。API key/secret は `wrangler secret put LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`
+LIVEKIT_URL = "wss://livekit.yourdomain.jp"   # セルフホスト (infra/livekit)
+# 録音 (任意)。secret: RECORDING_S3_ACCESS_KEY / RECORDING_S3_SECRET / CALL_AGENT_SECRET
+# RECORDING_S3_ENDPOINT = "http://127.0.0.1:9000"
+# RECORDING_S3_BUCKET = "talk-recordings"
 
 # ═══════════════════════════════════════════════════════════════
 # 本番環境

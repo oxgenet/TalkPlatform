@@ -585,6 +585,15 @@ function BookingCard({
             status={booking.status}
             onAction={(action) => onAction(booking.id, action)}
           />
+          {booking.status === 'confirmed' && (
+            /* TalkPlatform: 音声通話室 */
+            <Link
+              href={`/booking/calls/${booking.id}`}
+              className="mt-1.5 block rounded-lg bg-emerald-600 px-3 py-1.5 text-center text-xs font-bold text-white hover:opacity-90"
+            >
+              通話室へ
+            </Link>
+          )}
         </div>
       </div>
     </article>

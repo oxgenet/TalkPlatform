@@ -244,6 +244,50 @@ CREATE TABLE calendar_bookings (
   updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
 
+CREATE TABLE call_handoff_tokens (
+  token            TEXT PRIMARY KEY,
+  call_session_id  TEXT NOT NULL,
+  role             TEXT NOT NULL CHECK (role IN ('customer','staff')),
+  expires_at       TEXT NOT NULL,
+  consumed_at      TEXT,
+  FOREIGN KEY (call_session_id) REFERENCES call_sessions(id)
+);
+
+CREATE TABLE call_sessions (
+  id                  TEXT PRIMARY KEY,
+  booking_id          TEXT NOT NULL UNIQUE,
+  line_account_id     TEXT NOT NULL,
+  room_name           TEXT NOT NULL UNIQUE,              -- "call-<booking_id>"
+  status              TEXT NOT NULL DEFAULT 'scheduled'
+                      CHECK (status IN ('scheduled','in_progress','ended','no_show','cancelled')),
+  open_from           TEXT NOT NULL,                     -- UTC ISO8601: starts_at - 10min
+  close_at            TEXT NOT NULL,                     -- UTC ISO8601: ends_at + 15min
+  notify_at           TEXT NOT NULL,                     -- UTC ISO8601: starts_at - 10min
+  notified_at         TEXT,
+  customer_joined_at  TEXT,
+  staff_joined_at     TEXT,
+  started_at          TEXT,                              -- 双方が揃った時刻
+  ended_at            TEXT,
+  billable_seconds    INTEGER,
+  recording_url       TEXT,
+  last_error          TEXT,
+  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')), mode TEXT NOT NULL DEFAULT 'ai', handoff_reason TEXT, ai_summary TEXT, recording_egress_id TEXT, agent_joined_at TEXT,
+  FOREIGN KEY (booking_id) REFERENCES bookings(id),
+  FOREIGN KEY (line_account_id) REFERENCES line_accounts(id)
+);
+
+CREATE TABLE call_transcripts (
+  id               TEXT PRIMARY KEY,
+  call_session_id  TEXT NOT NULL,
+  seq              INTEGER NOT NULL,                 -- エージェント側の通し番号 (冪等化)
+  role             TEXT NOT NULL CHECK (role IN ('customer','assistant','operator','system')),
+  text             TEXT NOT NULL,
+  mode             TEXT NOT NULL,                    -- 発話時点の mode
+  at               TEXT NOT NULL,                    -- UTC ISO8601
+  FOREIGN KEY (call_session_id) REFERENCES call_sessions(id)
+);
+
 CREATE TABLE chats (
   id            TEXT PRIMARY KEY,
   friend_id     TEXT NOT NULL REFERENCES friends (id) ON DELETE CASCADE,
@@ -935,6 +979,20 @@ CREATE TABLE staff_shifts (
   FOREIGN KEY (staff_id) REFERENCES staff(id)
 );
 
+CREATE TABLE standalone_sessions (
+  id            TEXT PRIMARY KEY,
+  org_id        TEXT NOT NULL,                     -- SERVICE_API_KEYS の組織 ID
+  room_name     TEXT NOT NULL UNIQUE,              -- "sa-<id>"
+  display_name  TEXT,
+  scenario_id   TEXT,                              -- 会話 DSL (将来)。NULL = 既定
+  status        TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','ended','expired')),
+  expires_at    TEXT NOT NULL,                     -- UTC ISO8601: 発行から 2h
+  started_at    TEXT,
+  ended_at      TEXT,
+  billable_seconds INTEGER,
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
 CREATE TABLE stripe_events (
   id               TEXT PRIMARY KEY,
   stripe_event_id  TEXT NOT NULL UNIQUE,
@@ -1195,6 +1253,16 @@ CREATE INDEX idx_calendar_bookings_friend ON calendar_bookings (friend_id);
 
 CREATE INDEX idx_calendar_bookings_start ON calendar_bookings (start_at);
 
+CREATE INDEX idx_call_handoff_expires ON call_handoff_tokens (expires_at);
+
+CREATE INDEX idx_call_sessions_close ON call_sessions (status, close_at);
+
+CREATE INDEX idx_call_sessions_notify ON call_sessions (status, notified_at, notify_at);
+
+CREATE UNIQUE INDEX idx_call_transcripts_seq ON call_transcripts (call_session_id, seq);
+
+CREATE INDEX idx_call_transcripts_session ON call_transcripts (call_session_id, at);
+
 CREATE UNIQUE INDEX idx_chats_friend_unique ON chats (friend_id);
 
 CREATE INDEX idx_chats_operator ON chats (operator_id);
@@ -1366,6 +1434,10 @@ CREATE INDEX idx_staff_availability_rules_staff
 CREATE UNIQUE INDEX idx_staff_members_api_key ON staff_members(api_key);
 
 CREATE INDEX idx_staff_members_role ON staff_members(role);
+
+CREATE INDEX idx_standalone_expires ON standalone_sessions (status, expires_at);
+
+CREATE INDEX idx_standalone_org ON standalone_sessions (org_id, created_at DESC);
 
 CREATE INDEX idx_stripe_events_friend ON stripe_events (friend_id);
 

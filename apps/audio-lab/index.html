@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>TalkPlatform Audio Lab</title>
+    <style>
+      :root { color-scheme: light dark; font-family: -apple-system, system-ui, sans-serif; }
+      body { margin: 0; padding: 16px; max-width: 640px; margin-inline: auto; line-height: 1.5; }
+      h1 { font-size: 1.25rem; } h2 { font-size: 1rem; margin-top: 1.5rem; border-top: 1px solid #8884; padding-top: .75rem; }
+      button { font-size: 1rem; padding: .6rem 1rem; margin: .25rem .25rem .25rem 0; border-radius: 8px; border: 1px solid #8886; background: #3b82f6; color: #fff; }
+      button.secondary { background: transparent; color: inherit; }
+      button:disabled { opacity: .4; }
+      input, select { font-size: 1rem; padding: .5rem; width: 100%; box-sizing: border-box; margin: .25rem 0; }
+      .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+      .meter { height: 14px; background: #8883; border-radius: 7px; overflow: hidden; }
+      .meter > div { height: 100%; width: 0; background: #22c55e; transition: width 50ms linear; }
+      .warn { color: #b45309; } .err { color: #dc2626; } .ok { color: #16a34a; }
+      pre { font-size: .75rem; background: #8882; padding: .5rem; border-radius: 6px; overflow: auto; max-height: 220px; white-space: pre-wrap; }
+      .big { font-size: 2rem; font-variant-numeric: tabular-nums; text-align: center; }
+      .badge { display: inline-block; padding: 0 .5rem; border-radius: 999px; background: #8883; font-size: .8rem; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

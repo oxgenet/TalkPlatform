@@ -42,6 +42,28 @@ export interface BookingHistoryItem {
   profile_image_url: string | null;
 }
 
+// TalkPlatform: 音声通話
+export interface CallState {
+  booking_id: string;
+  booking_status: string;
+  starts_at: string;
+  ends_at: string;
+  menu_name: string;
+  staff_name: string;
+  customer_name: string | null;
+  call: {
+    status: 'scheduled' | 'in_progress' | 'ended' | 'no_show' | 'cancelled';
+    open_from: string;
+    close_at: string;
+    can_join: boolean;
+    started_at: string | null;
+    ended_at: string | null;
+    billable_seconds: number | null;
+  } | null;
+  now: string;
+}
+export interface JoinInfo { token: string; url: string; room: string; state?: CallState }
+
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   return { Authorization: `Bearer ${getIdToken()}`, ...extra };
 }
@@ -171,6 +193,11 @@ export const api = {
       { 'Idempotency-Key': idempotencyKey },
     ),
   me: () => get<{ upcoming: BookingHistoryItem[]; past: BookingHistoryItem[] }>('/api/liff/booking/me'),
+  // TalkPlatform
+  callState: (bookingId: string) => get<CallState>(`/api/liff/calls/${bookingId}`),
+  callToken: (bookingId: string) => post<JoinInfo>(`/api/liff/calls/${bookingId}/token`, {}),
+  callHandoff: (bookingId: string) =>
+    post<{ handoff_token: string; expires_in: number }>(`/api/liff/calls/${bookingId}/handoff`, {}),
 
   // ===== Event booking =====
   getEvent: (id: string) => get<EventDetail>(`/api/liff/events/${id}`),
@@ -199,3 +226,15 @@ export const api = {
   webinarCtaClick: (slug: string, sessionStartAt: number) =>
     post<{ ok: true }>(`/api/liff/webinars/${slug}/cta-click`, { sessionStartAt }),
 };
+
+// TalkPlatform: 外部ブラウザ引き継ぎ (LIFF 未初期化で呼ぶため認証ヘッダなし)
+export async function redeemCallHandoff(token: string): Promise<JoinInfo> {
+  const res = await fetch(`${BASE}/api/public/calls/handoff/${encodeURIComponent(token)}`, { method: 'POST' });
+  if (!res.ok) {
+    const err = new Error(`API ${res.status}`) as Error & { status: number; body: unknown };
+    err.status = res.status;
+    try { err.body = await res.json(); } catch { err.body = null; }
+    throw err;
+  }
+  return res.json();
+}

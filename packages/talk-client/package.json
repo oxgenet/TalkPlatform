@@ -1,0 +1,13 @@
+{
+  "name": "@talkplatform/talk-client",
+  "version": "0.1.0",
+  "description": "Web apps embed AI voice calls via the TalkPlatform service API (app-layer SDK)",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": { "@talkplatform/call-audio": "workspace:*" },
+  "devDependencies": { "typescript": "^5.7.0" }
+}
