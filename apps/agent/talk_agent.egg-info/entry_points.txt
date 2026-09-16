@@ -1,2 +1,0 @@
-[console_scripts]
-talk-agent = talk_agent.main:cli
